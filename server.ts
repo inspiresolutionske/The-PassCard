@@ -14,8 +14,13 @@ dotenv.config();
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Initialize Supabase on the server
-const supabaseUrl = process.env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || "";
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error("CRITICAL: Supabase credentials missing in environment variables.");
+}
+
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const __filename = fileURLToPath(import.meta.url);
@@ -48,6 +53,35 @@ async function startServer() {
       res.json(data);
     } catch (err: any) {
       console.error("Auth Error:", err);
+      res.status(500).json({ error: err.message || "Internal server error" });
+    }
+  });
+
+  app.post("/api/auth/signup", async (req, res) => {
+    const { email, password, name } = req.body;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return res.status(500).json({ error: "Supabase configuration is missing on the server." });
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: name,
+          },
+        },
+      });
+
+      if (error) {
+        return res.status(400).json({ error: error.message });
+      }
+
+      res.json(data);
+    } catch (err: any) {
+      console.error("Signup Error:", err);
       res.status(500).json({ error: err.message || "Internal server error" });
     }
   });

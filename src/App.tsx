@@ -91,8 +91,10 @@ interface Transaction {
 // --- Components ---
 
 const LoginModal = ({ onClose, onLogin }: any) => {
+  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -102,25 +104,29 @@ const LoginModal = ({ onClose, onLogin }: any) => {
     setLoading(true);
     setError('');
     try {
-      // Call the backend login route instead of Supabase directly to avoid "failed to fetch" issues
-      const response = await axios.post('/api/auth/login', {
-        email,
-        password,
-      });
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
+      const payload = isLogin ? { email, password } : { email, password, name };
+      
+      const response = await axios.post(endpoint, payload);
 
       const { user, session } = response.data;
       
       if (session) {
-        // Sync the session to the client-side Supabase instance
         const { error: setSessionError } = await supabase.auth.setSession(session);
         if (setSessionError) throw setSessionError;
+      }
+
+      if (!isLogin && !session) {
+        setError('Signup successful! Please check your email for verification.');
+        setLoading(false);
+        return;
       }
 
       onLogin(user);
       onClose();
     } catch (err: any) {
-      console.error('Login Error:', err);
-      const errorMessage = err.response?.data?.error || err.message || 'Login failed';
+      console.error('Auth Error:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Authentication failed';
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -138,16 +144,34 @@ const LoginModal = ({ onClose, onLogin }: any) => {
           <XCircle className="w-6 h-6" />
         </button>
         
-        <h2 className="text-3xl font-black mb-2 font-artistic">Login to PassCard</h2>
-        <p className="opacity-70 mb-6 uppercase tracking-widest text-xs">Enter your credentials to access the backend</p>
+        <h2 className="text-3xl font-black mb-2 font-artistic">{isLogin ? 'Login to PassCard' : 'Join PassCard'}</h2>
+        <p className="opacity-70 mb-6 uppercase tracking-widest text-xs">
+          {isLogin ? 'Enter your credentials to access the backend' : 'Create an account to start your journey'}
+        </p>
         
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-500 p-4 rounded-xl mb-6 text-sm font-bold">
+          <div className={cn(
+            "p-4 rounded-xl mb-6 text-sm font-bold border",
+            error.includes('successful') ? "bg-green-500/10 border-green-500/20 text-green-500" : "bg-red-500/10 border-red-500/20 text-red-500"
+          )}>
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {!isLogin && (
+            <div>
+              <label className="block text-xs font-black mb-2 opacity-60 uppercase tracking-widest">Full Name</label>
+              <input 
+                required
+                type="text" 
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-[#151F28] px-5 py-4 rounded-xl border border-[#F9943B]/30 focus:border-[#F9943B] outline-none transition-all text-[#F9943B] font-bold"
+                placeholder="Your Name"
+              />
+            </div>
+          )}
           <div>
             <label className="block text-xs font-black mb-2 opacity-60 uppercase tracking-widest">Email Address</label>
             <input 
@@ -156,7 +180,7 @@ const LoginModal = ({ onClose, onLogin }: any) => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-[#151F28] px-5 py-4 rounded-xl border border-[#F9943B]/30 focus:border-[#F9943B] outline-none transition-all text-[#F9943B] font-bold"
-              placeholder="admin@passcard.com"
+              placeholder="email@example.com"
             />
           </div>
           <div>
@@ -186,8 +210,18 @@ const LoginModal = ({ onClose, onLogin }: any) => {
             className="w-full bg-[#F9943B] text-[#151F28] py-5 rounded-2xl font-black text-xl flex items-center justify-center gap-3 hover:scale-[1.02] transition-all disabled:opacity-50 shadow-xl shadow-[#F9943B]/20"
           >
             {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <LogIn className="w-6 h-6" />}
-            LOGIN TO DASHBOARD
+            {isLogin ? 'LOGIN TO DASHBOARD' : 'CREATE ACCOUNT'}
           </button>
+
+          <div className="text-center">
+            <button 
+              type="button"
+              onClick={() => setIsLogin(!isLogin)}
+              className="text-xs font-black uppercase tracking-widest opacity-60 hover:opacity-100 hover:underline"
+            >
+              {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Login"}
+            </button>
+          </div>
         </form>
       </motion.div>
     </div>
@@ -221,6 +255,10 @@ const Navbar = ({ user, isAdmin, onLogin, onLogout, setView }: any) => (
         
         {user ? (
           <div className="flex items-center gap-6">
+            <div className="flex flex-col items-end">
+              <span className="text-xs font-black">{user.user_metadata?.full_name || user.email?.split('@')[0]}</span>
+              {isAdmin && <span className="text-[9px] font-black bg-[#F9943B] text-[#151F28] px-1.5 py-0.5 rounded-md uppercase tracking-tighter">Admin</span>}
+            </div>
             <div className="w-10 h-10 rounded-full border-2 border-[#F9943B] shadow-lg overflow-hidden bg-[#F9943B]/10 flex items-center justify-center">
               {user.user_metadata?.avatar_url || user.photoURL ? (
                 <img src={user.user_metadata?.avatar_url || user.photoURL} alt="User" className="w-full h-full object-cover" />
@@ -452,12 +490,34 @@ export default function App() {
     }
     
     setUser(u);
+    
+    // Sync to Firestore
+    try {
+      const userSnap = await getDocs(query(collection(db, 'users'), where('email', '==', u.email)));
+      const isDesignatedAdmin = u.email === 'inspiresolutions254@gmail.com';
+      
+      if (userSnap.empty) {
+        await addDoc(collection(db, 'users'), {
+          uid: u.id,
+          email: u.email,
+          name: u.user_metadata?.full_name || u.email.split('@')[0],
+          role: isDesignatedAdmin ? 'admin' : 'user',
+          createdAt: serverTimestamp()
+        });
+      } else if (isDesignatedAdmin && userSnap.docs[0].data().role !== 'admin') {
+        // Ensure designated admin always has admin role in Firestore
+        await updateDoc(doc(db, 'users', userSnap.docs[0].id), {
+          role: 'admin'
+        });
+      }
+    } catch (e) {
+      console.error("Error syncing user to Firestore:", e);
+    }
+
     if (u.email === 'inspiresolutions254@gmail.com') {
       setIsAdmin(true);
-      // If we just logged in, set view to admin
       if (view === 'home') setView('admin');
     } else {
-      // Check admin status in Firestore
       try {
         const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', u.email)));
         if (!userDoc.empty) {

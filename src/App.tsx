@@ -16,14 +16,7 @@ import {
   orderBy,
   getDocs
 } from 'firebase/firestore';
-import { 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  signOut,
-  User as FirebaseUser
-} from 'firebase/auth';
-import { db, auth } from './firebase';
+import { db } from './firebase';
 import { supabase } from './lib/supabase';
 import { 
   Ticket, 

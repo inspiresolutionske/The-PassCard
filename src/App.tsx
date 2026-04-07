@@ -373,7 +373,10 @@ export default function App() {
   const handleLogin = async () => {
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      if (result.user.email === 'inspiresolutions254@gmail.com') {
+        setView('admin');
+      }
     } catch (error) {
       console.error("Login failed:", error);
     }
@@ -498,7 +501,43 @@ export default function App() {
                   ACCESS THE <br />
                   <span className="bg-[#F9943B] text-[#151F28] px-4 rounded-2xl">XTRAORDINARY</span>
                 </h1>
-                <p className="opacity-70 text-xl md:text-2xl font-medium">The premier Christian events ticketing platform in Kenya.</p>
+                <p className="opacity-70 text-xl md:text-2xl font-medium mb-10">The premier Christian events ticketing platform in Kenya.</p>
+                
+                <div className="flex flex-col sm:flex-row gap-6">
+                  <button 
+                    onClick={() => document.getElementById('events-grid')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="bg-[#F9943B] text-[#151F28] px-12 py-5 rounded-2xl font-black text-xl hover:scale-105 transition-all shadow-2xl shadow-[#F9943B]/20"
+                  >
+                    EXPLORE EVENTS
+                  </button>
+                  {user ? (
+                    isAdmin ? (
+                      <button 
+                        onClick={() => setView('admin')}
+                        className="bg-[#151F28] border-2 border-[#F9943B] text-[#F9943B] px-12 py-5 rounded-2xl font-black text-xl hover:bg-[#F9943B] hover:text-[#151F28] transition-all flex items-center justify-center gap-3"
+                      >
+                        <LayoutDashboard className="w-6 h-6" />
+                        ADMIN DASHBOARD
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => setView('my-tickets')}
+                        className="bg-[#151F28] border-2 border-[#F9943B] text-[#F9943B] px-12 py-5 rounded-2xl font-black text-xl hover:bg-[#F9943B] hover:text-[#151F28] transition-all flex items-center justify-center gap-3"
+                      >
+                        <Ticket className="w-6 h-6" />
+                        MY TICKETS
+                      </button>
+                    )
+                  ) : (
+                    <button 
+                      onClick={handleLogin}
+                      className="bg-[#151F28] border-2 border-[#F9943B] text-[#F9943B] px-12 py-5 rounded-2xl font-black text-xl hover:bg-[#F9943B] hover:text-[#151F28] transition-all flex items-center justify-center gap-3"
+                    >
+                      <LogIn className="w-6 h-6" />
+                      LOGIN TO DASHBOARD
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="relative w-full md:w-96">
                 <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-[#F9943B]/50 w-6 h-6" />

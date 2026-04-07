@@ -1,0 +1,5 @@
+{
+  "name": "PassCard - Access the Xtraordinary",
+  "description": "The premier Christian events ticketing platform. Access the Xtraordinary with secure M-Pesa payments and verified tickets.",
+  "requestFramePermissions": ["camera"]
+}

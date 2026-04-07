@@ -1,0 +1,87 @@
+{
+  "entities": {
+    "Event": {
+      "title": "Event",
+      "description": "A public event for which tickets can be purchased.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Event title" },
+        "description": { "type": "string", "description": "Event description" },
+        "date": { "type": "string", "format": "date-time", "description": "Event date and time" },
+        "location": { "type": "string", "description": "Event location" },
+        "imageUrl": { "type": "string", "description": "URL to event image" },
+        "price": { "type": "number", "description": "Ticket price" },
+        "status": { "type": "string", "enum": ["draft", "published", "cancelled"], "description": "Event status" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "date", "location", "price", "status"]
+    },
+    "Ticket": {
+      "title": "Ticket",
+      "description": "A purchased ticket for an event.",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "description": "ID of the event" },
+        "eventTitle": { "type": "string", "description": "Title of the event" },
+        "userName": { "type": "string", "description": "Name of the ticket holder" },
+        "phoneNumber": { "type": "string", "description": "M-Pesa phone number used for purchase" },
+        "price": { "type": "number", "description": "Price paid" },
+        "status": { "type": "string", "enum": ["valid", "used", "refunded"], "description": "Ticket status" },
+        "mpesaReceipt": { "type": "string", "description": "M-Pesa transaction receipt number" },
+        "qrCode": { "type": "string", "description": "Unique QR code data" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["eventId", "userName", "phoneNumber", "price", "status", "mpesaReceipt", "qrCode"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A record of an M-Pesa payment attempt.",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "amount": { "type": "number" },
+        "checkoutRequestId": { "type": "string", "description": "M-Pesa CheckoutRequestID" },
+        "status": { "type": "string", "enum": ["pending", "success", "failed"] },
+        "mpesaReceipt": { "type": "string" },
+        "errorMessage": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["eventId", "phoneNumber", "amount", "checkoutRequestId", "status"]
+    },
+    "EventRequest": {
+      "title": "EventRequest",
+      "description": "A request submitted by a user to host an event.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string" },
+        "location": { "type": "string" },
+        "pricing": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "submittedBy": { "type": "string", "description": "User email or ID" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "date", "location", "status"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Application user profile.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "events": { "schema": "Event", "description": "Public events" },
+    "tickets": { "schema": "Ticket", "description": "Purchased tickets" },
+    "transactions": { "schema": "Transaction", "description": "M-Pesa transaction logs" },
+    "eventRequests": { "schema": "EventRequest", "description": "User submitted event requests" },
+    "users": { "schema": "User", "description": "User profiles and roles" }
+  }
+}

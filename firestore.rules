@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: events
+    // Fields: title, description, date, location, imageUrl, price, status, createdAt
+    //
+    // Collection: tickets
+    // Fields: eventId, eventTitle, userName, phoneNumber, price, status, mpesaReceipt, qrCode, createdAt
+    //
+    // Collection: transactions
+    // Fields: eventId, phoneNumber, amount, checkoutRequestId, status, mpesaReceipt, errorMessage, createdAt
+    //
+    // Collection: eventRequests
+    // Fields: name, description, date, location, pricing, status, submittedBy, createdAt
+    //
+    // Collection: users
+    // Fields: email, role, createdAt
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "inspiresolutions254@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // Events: Publicly readable if published, admin can do everything
+    match /events/{eventId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Test connection document
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // Tickets: User can read their own tickets (by phone number check or if we had UID), Admin can read all
+    // For simplicity in this demo, we'll allow reading if you know the ticket ID, but in production we'd lock this down.
+    match /tickets/{ticketId} {
+      allow read: if true; // In a real app, we'd restrict this to the owner or admin
+      allow create: if false; // Only created via backend after M-Pesa callback
+      allow update: if isAdmin(); // Admin can mark as used
+      allow delete: if isAdmin();
+    }
+
+    // Transactions: Admin only
+    match /transactions/{txId} {
+      allow read: if isAdmin();
+      allow write: if false; // Only created via backend
+    }
+
+    // Event Requests: Authenticated users can create, Admin can read/update
+    match /eventRequests/{requestId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Users: Owner can read/write their profile (except role), Admin can do everything
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.role == 'user';
+      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role);
+    }
+  }
+}

@@ -7,10 +7,16 @@ import dotenv from "dotenv";
 import cors from "cors";
 
 import { Resend } from "resend";
+import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Initialize Supabase on the server
+const supabaseUrl = process.env.VITE_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || "";
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +27,30 @@ async function startServer() {
 
   app.use(cors());
   app.use(express.json());
+
+  app.post("/api/auth/login", async (req, res) => {
+    const { email, password } = req.body;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return res.status(500).json({ error: "Supabase configuration is missing on the server." });
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        return res.status(401).json({ error: error.message });
+      }
+
+      res.json(data);
+    } catch (err: any) {
+      console.error("Auth Error:", err);
+      res.status(500).json({ error: err.message || "Internal server error" });
+    }
+  });
 
   // --- M-Pesa Daraja API Integration ---
 

@@ -101,15 +101,26 @@ const LoginModal = ({ onClose, onLogin }: any) => {
     setLoading(true);
     setError('');
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      // Call the backend login route instead of Supabase directly to avoid "failed to fetch" issues
+      const response = await axios.post('/api/auth/login', {
         email,
         password,
       });
-      if (signInError) throw signInError;
-      onLogin(data.user);
+
+      const { user, session } = response.data;
+      
+      if (session) {
+        // Sync the session to the client-side Supabase instance
+        const { error: setSessionError } = await supabase.auth.setSession(session);
+        if (setSessionError) throw setSessionError;
+      }
+
+      onLogin(user);
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      console.error('Login Error:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Login failed';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

@@ -39,6 +39,7 @@ import {
   EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 import axios from 'axios';
 import { QRCodeSVG } from 'qrcode.react';
 import { format } from 'date-fns';
@@ -437,6 +438,12 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (isAdmin && view === 'home') {
+      // Optional: Auto-redirect to admin if desired, but let's just ensure the button is there
+    }
+  }, [isAdmin, view]);
+
   const handleUser = async (u: any) => {
     if (!u) {
       setUser(null);
@@ -447,6 +454,8 @@ export default function App() {
     setUser(u);
     if (u.email === 'inspiresolutions254@gmail.com') {
       setIsAdmin(true);
+      // If we just logged in, set view to admin
+      if (view === 'home') setView('admin');
     } else {
       // Check admin status in Firestore
       try {
@@ -843,13 +852,16 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('events');
   const [events, setEvents] = useState<Event[]>([]);
   const [tickets, setTickets] = useState<TicketData[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [showAddEvent, setShowAddEvent] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'events'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setEvents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Event)));
-    });
+    }, (err) => console.error("Events fetch error:", err));
     return () => unsubscribe();
   }, []);
 
@@ -857,23 +869,47 @@ const AdminDashboard = () => {
     const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setTickets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TicketData)));
-    });
+    }, (err) => console.error("Tickets fetch error:", err));
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'transactions'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => console.error("Transactions fetch error:", err));
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => console.error("Users fetch error:", err));
     return () => unsubscribe();
   }, []);
 
   const toggleEventStatus = async (event: Event) => {
-    const newStatus = event.status === 'published' ? 'draft' : 'published';
-    await updateDoc(doc(db, 'events', event.id), { status: newStatus });
+    try {
+      const newStatus = event.status === 'published' ? 'draft' : 'published';
+      await updateDoc(doc(db, 'events', event.id), { status: newStatus });
+    } catch (err) {
+      console.error("Toggle status error:", err);
+    }
   };
 
   const markTicketUsed = async (ticketId: string) => {
-    await updateDoc(doc(db, 'tickets', ticketId), { status: 'used' });
+    try {
+      await updateDoc(doc(db, 'tickets', ticketId), { status: 'used' });
+    } catch (err) {
+      console.error("Mark ticket error:", err);
+    }
   };
 
   return (
     <div className="bg-[#151F28] rounded-[3rem] shadow-2xl overflow-hidden border border-[#F9943B]/20">
-      <div className="flex border-b border-[#F9943B]/10 overflow-x-auto">
-        {['events', 'tickets', 'scanner', 'requests'].map((tab) => (
+      <div className="flex border-b border-[#F9943B]/10 overflow-x-auto scrollbar-hide">
+        {['events', 'tickets', 'transactions', 'users', 'scanner', 'requests'].map((tab) => (
           <button 
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -902,31 +938,35 @@ const AdminDashboard = () => {
             </div>
             
             <div className="grid grid-cols-1 gap-6">
-              {events.map(event => (
-                <div key={event.id} className="flex flex-col md:flex-row md:items-center justify-between p-8 bg-[#F9943B]/5 rounded-[2.5rem] border border-[#F9943B]/10 gap-6">
-                  <div className="flex items-center gap-6">
-                    <img src={event.imageUrl} className="w-24 h-24 rounded-3xl object-cover shadow-lg" referrerPolicy="no-referrer" />
-                    <div>
-                      <h4 className="font-black text-2xl">{event.title}</h4>
-                      <p className="opacity-60 text-lg">{event.location} • KES {event.price}</p>
+              {events.length === 0 ? (
+                <div className="text-center py-20 opacity-40">No events found.</div>
+              ) : (
+                events.map(event => (
+                  <div key={event.id} className="flex flex-col md:flex-row md:items-center justify-between p-8 bg-[#F9943B]/5 rounded-[2.5rem] border border-[#F9943B]/10 gap-6">
+                    <div className="flex items-center gap-6">
+                      <img src={event.imageUrl} className="w-24 h-24 rounded-3xl object-cover shadow-lg" referrerPolicy="no-referrer" />
+                      <div>
+                        <h4 className="font-black text-2xl">{event.title}</h4>
+                        <p className="opacity-60 text-lg">{event.location} • KES {event.price}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <span className={cn(
+                        "px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest",
+                        event.status === 'published' ? "bg-[#F9943B] text-[#151F28]" : "bg-[#F9943B]/10 text-[#F9943B]"
+                      )}>
+                        {event.status?.toUpperCase()}
+                      </span>
+                      <button 
+                        onClick={() => toggleEventStatus(event)}
+                        className="text-sm font-black uppercase tracking-widest hover:underline"
+                      >
+                        {event.status === 'published' ? 'Unpublish' : 'Publish'}
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-6">
-                    <span className={cn(
-                      "px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest",
-                      event.status === 'published' ? "bg-[#F9943B] text-[#151F28]" : "bg-[#F9943B]/10 text-[#F9943B]"
-                    )}>
-                      {event.status.toUpperCase()}
-                    </span>
-                    <button 
-                      onClick={() => toggleEventStatus(event)}
-                      className="text-sm font-black uppercase tracking-widest hover:underline"
-                    >
-                      {event.status === 'published' ? 'Unpublish' : 'Publish'}
-                    </button>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}
@@ -947,34 +987,110 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F9943B]/5">
-                  {tickets.map(ticket => (
-                    <tr key={ticket.id} className="text-lg">
-                      <td className="py-6 opacity-40 font-mono text-xs">{ticket.id.slice(0, 8)}</td>
-                      <td className="py-6 font-black">{ticket.eventTitle}</td>
-                      <td className="py-6 opacity-80">{ticket.userName}</td>
-                      <td className="py-6 font-mono font-bold">{ticket.mpesaReceipt}</td>
-                      <td className="py-6">
-                        <span className={cn(
-                          "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                          ticket.status === 'valid' ? "bg-[#F9943B] text-[#151F28]" : "bg-[#F9943B]/10 opacity-40"
-                        )}>
-                          {ticket.status.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="py-6">
-                        {ticket.status === 'valid' && (
-                          <button 
-                            onClick={() => markTicketUsed(ticket.id)}
-                            className="text-xs font-black uppercase tracking-widest hover:underline"
-                          >
-                            Mark Used
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {tickets.length === 0 ? (
+                    <tr><td colSpan={6} className="py-20 text-center opacity-40">No tickets sold yet.</td></tr>
+                  ) : (
+                    tickets.map(ticket => (
+                      <tr key={ticket.id} className="text-lg">
+                        <td className="py-6 opacity-40 font-mono text-xs">{ticket.id?.slice(0, 8)}</td>
+                        <td className="py-6 font-black">{ticket.eventTitle}</td>
+                        <td className="py-6 opacity-80">{ticket.userName}</td>
+                        <td className="py-6 font-mono font-bold">{ticket.mpesaReceipt}</td>
+                        <td className="py-6">
+                          <span className={cn(
+                            "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                            ticket.status === 'valid' ? "bg-[#F9943B] text-[#151F28]" : "bg-[#F9943B]/10 opacity-40"
+                          )}>
+                            {ticket.status?.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-6">
+                          {ticket.status === 'valid' && (
+                            <button 
+                              onClick={() => markTicketUsed(ticket.id)}
+                              className="text-xs font-black uppercase tracking-widest hover:underline"
+                            >
+                              Mark Used
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'transactions' && (
+          <div>
+            <h3 className="text-3xl font-black mb-10 font-artistic">TRANSACTIONS</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="opacity-40 text-xs uppercase tracking-widest border-b border-[#F9943B]/10">
+                    <th className="pb-6 font-black">ID</th>
+                    <th className="pb-6 font-black">Phone</th>
+                    <th className="pb-6 font-black">Amount</th>
+                    <th className="pb-6 font-black">Status</th>
+                    <th className="pb-6 font-black">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F9943B]/5">
+                  {transactions.length === 0 ? (
+                    <tr><td colSpan={5} className="py-20 text-center opacity-40">No transactions found.</td></tr>
+                  ) : (
+                    transactions.map(tx => (
+                      <tr key={tx.id} className="text-lg">
+                        <td className="py-6 opacity-40 font-mono text-xs">{tx.id?.slice(0, 8)}</td>
+                        <td className="py-6 font-black">{tx.phoneNumber}</td>
+                        <td className="py-6 opacity-80">KES {tx.amount}</td>
+                        <td className="py-6">
+                          <span className={cn(
+                            "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                            tx.status === 'success' ? "bg-green-500 text-white" : "bg-[#F9943B]/10 opacity-40"
+                          )}>
+                            {tx.status?.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-6 opacity-40 text-xs">
+                          {tx.createdAt?.toDate ? format(tx.createdAt.toDate(), 'MMM d, HH:mm') : 'N/A'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'users' && (
+          <div>
+            <h3 className="text-3xl font-black mb-10 font-artistic">USERS</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {users.length === 0 ? (
+                <div className="col-span-full text-center py-20 opacity-40">No users registered.</div>
+              ) : (
+                users.map(u => (
+                  <div key={u.id} className="p-6 bg-[#F9943B]/5 rounded-3xl border border-[#F9943B]/10">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="w-12 h-12 rounded-full bg-[#F9943B] flex items-center justify-center text-[#151F28] font-black text-xl">
+                        {u.name?.charAt(0) || u.email?.charAt(0)}
+                      </div>
+                      <div>
+                        <h4 className="font-black">{u.name || 'Anonymous'}</h4>
+                        <p className="text-xs opacity-60">{u.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black uppercase tracking-widest opacity-40">{u.role || 'user'}</span>
+                      <p className="text-[10px] opacity-40">{u.createdAt?.toDate ? format(u.createdAt.toDate(), 'MMM d, yyyy') : ''}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -985,8 +1101,11 @@ const AdminDashboard = () => {
               <ScanLine className="w-20 h-20 text-[#F9943B]/30" />
             </div>
             <h3 className="text-4xl font-black mb-6 font-artistic">SCANNER</h3>
-            <p className="opacity-60 max-w-sm mx-auto mb-12 text-lg">Use the PassCard mobile app or a QR scanner to verify tickets at the gate.</p>
-            <button className="bg-[#F9943B] text-[#151F28] px-12 py-5 rounded-2xl font-black text-xl hover:scale-105 transition-all shadow-xl shadow-[#F9943B]/20">
+            <p className="opacity-60 max-w-sm mx-auto mb-12 text-lg">Scan ticket QR codes to verify entry at the gate.</p>
+            <button 
+              onClick={() => setShowScanner(true)}
+              className="bg-[#F9943B] text-[#151F28] px-12 py-5 rounded-2xl font-black text-xl hover:scale-105 transition-all shadow-xl shadow-[#F9943B]/20"
+            >
               LAUNCH WEB SCANNER
             </button>
           </div>
@@ -996,6 +1115,116 @@ const AdminDashboard = () => {
       </div>
 
       {showAddEvent && <AddEventModal onClose={() => setShowAddEvent(false)} />}
+      {showScanner && <ScannerModal onClose={() => setShowScanner(false)} />}
+    </div>
+  );
+};
+
+const ScannerModal = ({ onClose }: { onClose: () => void }) => {
+  const [scanResult, setScanResult] = useState<string | null>(null);
+  const [ticketInfo, setTicketInfo] = useState<any>(null);
+  const [scanning, setScanning] = useState(true);
+
+  useEffect(() => {
+    const scanner = new Html5QrcodeScanner(
+      "reader",
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      /* verbose= */ false
+    );
+
+    scanner.render(onScanSuccess, onScanFailure);
+
+    async function onScanSuccess(decodedText: string) {
+      setScanResult(decodedText);
+      setScanning(false);
+      scanner.clear();
+
+      // Check ticket in Firestore
+      // QR format: TICKET-{txId}-{mpesaReceipt}
+      const parts = decodedText.split('-');
+      if (parts.length >= 3) {
+        const receipt = parts[2];
+        const q = query(collection(db, 'tickets'), where('mpesaReceipt', '==', receipt));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          setTicketInfo({ id: snap.docs[0].id, ...snap.docs[0].data() });
+        } else {
+          setTicketInfo({ error: "Invalid Ticket" });
+        }
+      } else {
+        setTicketInfo({ error: "Invalid QR Format" });
+      }
+    }
+
+    function onScanFailure(error: any) {
+      // console.warn(`Code scan error = ${error}`);
+    }
+
+    return () => {
+      scanner.clear().catch(e => console.error("Scanner clear error:", e));
+    };
+  }, []);
+
+  const verifyTicket = async () => {
+    if (ticketInfo?.id) {
+      await updateDoc(doc(db, 'tickets', ticketInfo.id), { status: 'used' });
+      setTicketInfo({ ...ticketInfo, status: 'used' });
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+      <div className="bg-[#151F28] border border-[#F9943B]/30 rounded-[3rem] p-10 max-w-md w-full shadow-2xl relative text-[#F9943B]">
+        <button onClick={onClose} className="absolute top-8 right-8 text-[#F9943B]/60 hover:text-[#F9943B]">
+          <XCircle className="w-8 h-8" />
+        </button>
+        
+        <h2 className="text-3xl font-black mb-8 font-artistic text-center">TICKET SCANNER</h2>
+        
+        {scanning ? (
+          <div id="reader" className="overflow-hidden rounded-2xl border-2 border-[#F9943B]/20"></div>
+        ) : (
+          <div className="text-center">
+            {ticketInfo?.error ? (
+              <div className="bg-red-500/20 text-red-500 p-8 rounded-3xl border border-red-500/30 mb-8">
+                <XCircle className="w-16 h-16 mx-auto mb-4" />
+                <h3 className="text-2xl font-black uppercase">{ticketInfo.error}</h3>
+              </div>
+            ) : ticketInfo ? (
+              <div className={cn(
+                "p-8 rounded-3xl border mb-8",
+                ticketInfo.status === 'valid' ? "bg-green-500/20 border-green-500/30 text-green-500" : "bg-red-500/20 border-red-500/30 text-red-500"
+              )}>
+                <div className="w-16 h-16 mx-auto mb-4 bg-current rounded-full flex items-center justify-center">
+                  {ticketInfo.status === 'valid' ? <CheckCircle2 className="w-10 h-10 text-[#151F28]" /> : <XCircle className="w-10 h-10 text-[#151F28]" />}
+                </div>
+                <h3 className="text-2xl font-black uppercase mb-2">{ticketInfo.status === 'valid' ? 'VALID TICKET' : 'ALREADY USED'}</h3>
+                <p className="font-black text-xl mb-1">{ticketInfo.eventTitle}</p>
+                <p className="opacity-80">{ticketInfo.userName}</p>
+                <p className="font-mono text-xs mt-4 opacity-60">{ticketInfo.mpesaReceipt}</p>
+                
+                {ticketInfo.status === 'valid' && (
+                  <button 
+                    onClick={verifyTicket}
+                    className="mt-8 w-full bg-green-500 text-[#151F28] py-4 rounded-xl font-black text-lg hover:scale-105 transition-all"
+                  >
+                    VERIFY ENTRY
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="py-20 animate-pulse text-[#F9943B]/40 font-black uppercase tracking-widest">Processing...</div>
+            )}
+            
+            <button 
+              onClick={() => { setScanning(true); setTicketInfo(null); }}
+              className="w-full border-2 border-[#F9943B]/30 text-[#F9943B] py-4 rounded-xl font-black text-lg hover:bg-[#F9943B]/10 transition-all"
+            >
+              SCAN ANOTHER
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -1011,38 +1240,60 @@ const EventRequestsList = () => {
     return () => unsubscribe();
   }, []);
 
-  const updateStatus = async (id: string, status: string) => {
-    await updateDoc(doc(db, 'eventRequests', id), { status });
+  const updateStatus = async (id: string, status: string, reqData: any) => {
+    try {
+      await updateDoc(doc(db, 'eventRequests', id), { status });
+      
+      if (status === 'approved') {
+        // Automatically create the event
+        await addDoc(collection(db, 'events'), {
+          title: reqData.name,
+          description: reqData.description,
+          date: reqData.date,
+          location: reqData.location,
+          price: Number(reqData.pricing.split(':')[1]?.trim() || 0),
+          imageUrl: 'https://picsum.photos/seed/event/1920/1080', // Default placeholder
+          status: 'published',
+          createdAt: serverTimestamp()
+        });
+      }
+    } catch (err) {
+      console.error("Update request status error:", err);
+    }
   };
 
   return (
     <div>
       <h3 className="text-3xl font-black mb-10 font-artistic">REQUESTS</h3>
       <div className="space-y-6">
-        {requests.map(req => (
-          <div key={req.id} className="p-8 bg-[#F9943B]/5 rounded-[2.5rem] border border-[#F9943B]/10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <div>
-              <h4 className="font-black text-2xl mb-1">{req.name}</h4>
-              <p className="opacity-60 text-lg">{req.location} • {req.date}</p>
-              <p className="opacity-40 text-sm mt-2 font-bold uppercase tracking-widest">By: {req.submittedBy}</p>
+        {requests.length === 0 ? (
+          <div className="text-center py-20 opacity-40">No event requests.</div>
+        ) : (
+          requests.map(req => (
+            <div key={req.id} className="p-8 bg-[#F9943B]/5 rounded-[2.5rem] border border-[#F9943B]/10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+              <div>
+                <h4 className="font-black text-2xl mb-1">{req.name}</h4>
+                <p className="opacity-60 text-lg">{req.location} • {req.date}</p>
+                <p className="opacity-40 text-sm mt-2 font-bold uppercase tracking-widest">By: {req.submittedBy}</p>
+              </div>
+              <div className="flex items-center gap-6">
+                <span className={cn(
+                  "px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest",
+                  req.status === 'pending' ? "bg-[#F9943B]/40 text-[#151F28]" : 
+                  req.status === 'approved' ? "bg-[#F9943B] text-[#151F28]" : "bg-[#F9943B]/10 text-[#F9943B] opacity-40"
+                )}>
+                  {req.status?.toUpperCase()}
+                </span>
+                {req.status === 'pending' && (
+                  <div className="flex gap-4">
+                    <button onClick={() => updateStatus(req.id, 'approved', req)} className="text-[#F9943B] font-black uppercase tracking-widest hover:underline">Approve</button>
+                    <button onClick={() => updateStatus(req.id, 'rejected', req)} className="text-[#F9943B] opacity-60 font-black uppercase tracking-widest hover:underline">Reject</button>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-6">
-              <span className={cn(
-                "px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest",
-                req.status === 'pending' ? "bg-[#F9943B]/40 text-[#151F28]" : 
-                req.status === 'approved' ? "bg-[#F9943B] text-[#151F28]" : "bg-[#F9943B]/10 text-[#F9943B] opacity-40"
-              )}>
-                {req.status.toUpperCase()}
-              </span>
-              {req.status === 'pending' && (
-                <div className="flex gap-4">
-                  <button onClick={() => updateStatus(req.id, 'approved')} className="text-[#F9943B] font-black uppercase tracking-widest hover:underline">Approve</button>
-                  <button onClick={() => updateStatus(req.id, 'rejected')} className="text-[#F9943B] opacity-60 font-black uppercase tracking-widest hover:underline">Reject</button>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );

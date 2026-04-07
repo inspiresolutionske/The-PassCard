@@ -41,7 +41,9 @@ import {
   Loader2,
   Search,
   ScanLine,
-  LogIn
+  LogIn,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
@@ -94,6 +96,99 @@ interface Transaction {
 
 // --- Components ---
 
+const LoginModal = ({ onClose, onLogin }: any) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError) throw signInError;
+      onLogin(data.user);
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="bg-[#151F28] border border-[#F9943B]/30 rounded-[2rem] p-8 max-w-md w-full shadow-2xl relative text-[#F9943B]"
+      >
+        <button onClick={onClose} className="absolute top-6 right-6 text-[#F9943B]/60 hover:text-[#F9943B]">
+          <XCircle className="w-6 h-6" />
+        </button>
+        
+        <h2 className="text-3xl font-black mb-2 font-artistic">Login to PassCard</h2>
+        <p className="opacity-70 mb-6 uppercase tracking-widest text-xs">Enter your credentials to access the backend</p>
+        
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 text-red-500 p-4 rounded-xl mb-6 text-sm font-bold">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label className="block text-xs font-black mb-2 opacity-60 uppercase tracking-widest">Email Address</label>
+            <input 
+              required
+              type="email" 
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-[#151F28] px-5 py-4 rounded-xl border border-[#F9943B]/30 focus:border-[#F9943B] outline-none transition-all text-[#F9943B] font-bold"
+              placeholder="admin@passcard.com"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-black mb-2 opacity-60 uppercase tracking-widest">Password</label>
+            <div className="relative">
+              <input 
+                required
+                type={showPassword ? "text" : "password"} 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-[#151F28] px-5 py-4 rounded-xl border border-[#F9943B]/30 focus:border-[#F9943B] outline-none transition-all text-[#F9943B] font-bold pr-14"
+                placeholder="••••••••"
+              />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-[#F9943B]/60 hover:text-[#F9943B] transition-all"
+              >
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
+          
+          <button 
+            disabled={loading}
+            type="submit"
+            className="w-full bg-[#F9943B] text-[#151F28] py-5 rounded-2xl font-black text-xl flex items-center justify-center gap-3 hover:scale-[1.02] transition-all disabled:opacity-50 shadow-xl shadow-[#F9943B]/20"
+          >
+            {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <LogIn className="w-6 h-6" />}
+            LOGIN TO DASHBOARD
+          </button>
+        </form>
+      </motion.div>
+    </div>
+  );
+};
+
 const Navbar = ({ user, isAdmin, onLogin, onLogout, setView }: any) => (
   <nav className="bg-[#151F28] text-[#F9943B] py-6 px-8 sticky top-0 z-50 shadow-2xl border-b border-[#F9943B]/10">
     <div className="max-w-7xl mx-auto flex justify-between items-center">
@@ -121,7 +216,13 @@ const Navbar = ({ user, isAdmin, onLogin, onLogout, setView }: any) => (
         
         {user ? (
           <div className="flex items-center gap-6">
-            <img src={user.photoURL || ''} alt="User" className="w-10 h-10 rounded-full border-2 border-[#F9943B] shadow-lg" />
+            <div className="w-10 h-10 rounded-full border-2 border-[#F9943B] shadow-lg overflow-hidden bg-[#F9943B]/10 flex items-center justify-center">
+              {user.user_metadata?.avatar_url || user.photoURL ? (
+                <img src={user.user_metadata?.avatar_url || user.photoURL} alt="User" className="w-full h-full object-cover" />
+              ) : (
+                <UserIcon className="w-6 h-6 text-[#F9943B]" />
+              )}
+            </div>
             <button onClick={onLogout} className="opacity-40 hover:opacity-100 transition-all">
               <LogOut className="w-6 h-6" />
             </button>
@@ -305,7 +406,7 @@ const TicketModal = ({ ticket, onClose }: { ticket: TicketData, onClose: () => v
 // --- Main App ---
 
 export default function App() {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [view, setView] = useState('home');
   const [events, setEvents] = useState<Event[]>([]);
@@ -315,36 +416,48 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'waiting' | 'success' | 'failed'>('idle');
   const [isOffline, setIsOffline] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        // Check admin status
-        try {
-          const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', u.email)));
-          if (!userDoc.empty) {
-            setIsAdmin(userDoc.docs[0].data().role === 'admin');
-          } else if (u.email === 'inspiresolutions254@gmail.com') {
-            setIsAdmin(true);
-            // Bootstrap admin user
-            await addDoc(collection(db, 'users'), {
-              uid: u.uid,
-              email: u.email,
-              role: 'admin',
-              createdAt: serverTimestamp()
-            });
-          }
-        } catch (e) {
-          console.error("Error checking admin status:", e);
-        }
-      } else {
-        setIsAdmin(false);
-      }
+    // Check current session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleUser(session?.user ?? null);
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      handleUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  const handleUser = async (u: any) => {
+    if (!u) {
+      setUser(null);
+      setIsAdmin(false);
+      return;
+    }
+    
+    setUser(u);
+    if (u.email === 'inspiresolutions254@gmail.com') {
+      setIsAdmin(true);
+    } else {
+      // Check admin status in Firestore
+      try {
+        const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', u.email)));
+        if (!userDoc.empty) {
+          setIsAdmin(userDoc.docs[0].data().role === 'admin');
+        } else {
+          setIsAdmin(false);
+        }
+      } catch (e) {
+        console.error("Error checking admin status:", e);
+        setIsAdmin(false);
+      }
+    }
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'events'), where('status', '==', 'published'), orderBy('date', 'asc'));
@@ -370,19 +483,14 @@ export default function App() {
     }
   }, [user]);
 
-  const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-      const result = await signInWithPopup(auth, provider);
-      if (result.user.email === 'inspiresolutions254@gmail.com') {
-        setView('admin');
-      }
-    } catch (error) {
-      console.error("Login failed:", error);
-    }
+  const handleLogin = () => {
+    setShowLoginModal(true);
   };
 
-  const handleLogout = () => signOut(auth);
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setView('home');
+  };
 
   const handlePurchase = async (event: Event, details: { phoneNumber: string, name: string }) => {
     setPaymentStatus('waiting');
@@ -653,7 +761,18 @@ export default function App() {
       </main>
 
       <AnimatePresence>
-        {selectedEvent && (
+        {showLoginModal && (
+        <LoginModal 
+          onClose={() => setShowLoginModal(false)} 
+          onLogin={(u: any) => {
+            if (u.email === 'inspiresolutions254@gmail.com') {
+              setView('admin');
+            }
+          }} 
+        />
+      )}
+
+      {selectedEvent && (
           <PurchaseModal 
             event={selectedEvent} 
             onClose={() => setSelectedEvent(null)} 
